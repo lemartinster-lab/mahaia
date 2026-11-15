@@ -1,5 +1,6 @@
 import "server-only";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { clienteServidor } from "@/lib/supabase/servidor";
 import type { FilaRestaurante } from "@/lib/supabase/tipos";
 
@@ -14,6 +15,10 @@ export type Contexto = {
  * Devuelve null si no hay sesión.
  */
 export async function obtenerSesion(): Promise<Contexto | null> {
+  // La sesión se verifica SIEMPRE con la petición real: getClaims compara
+  // la caducidad del token con Date.now(), algo que Next.js 16 no permite
+  // al preparar páginas por adelantado (prefetch / App Shell).
+  await connection();
   const supabase = await clienteServidor();
   const { data, error } = await supabase.auth.getClaims();
   const sub = data?.claims?.sub;
