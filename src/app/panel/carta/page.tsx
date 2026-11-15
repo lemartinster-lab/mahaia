@@ -11,6 +11,7 @@ import {
   FormularioPlato,
   NuevaCategoria,
 } from "./componentes";
+import { EstadoPublicacion } from "./EstadoPublicacion";
 
 export const metadata: Metadata = { title: "Carta · Mahaia" };
 
@@ -33,6 +34,11 @@ async function Contenido() {
 
   return (
     <div className="mt-4 flex flex-col gap-8">
+      <EstadoPublicacion
+        slug={ctx.restaurante.slug}
+        publicada={ctx.restaurante.is_published}
+        totalPlatos={total}
+      />
       <p className="text-sm text-neutral-600">
         {total === 0
           ? "Empieza creando una categoría (por ejemplo «Entrantes» o «Ramen») y añade tus platos."

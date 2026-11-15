@@ -1,8 +1,9 @@
 "use server";
 
-import { refresh } from "next/cache";
+import { refresh, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { exigirRestaurante, exigirSesion, type ContextoRestaurante } from "@/lib/datos/sesion";
+import { etiquetaCarta } from "@/lib/domain/cartaPublica";
 import type { EstadoAccion } from "./estado";
 import {
   buscarDuplicado,
@@ -41,6 +42,15 @@ function registrarError(accion: string, error: ErrorSupabase | null | undefined,
   });
 }
 
+/**
+ * Tras cualquier cambio: invalida la caché de la carta pública (los
+ * clientes verán el cambio en su siguiente visita) y refresca el panel.
+ */
+function actualizar(slug: string) {
+  updateTag(etiquetaCarta(slug));
+  refresh();
+}
+
 function leerId(fd: FormData, campo = "id"): string | null {
   const r = idSchema.safeParse(fd.get(campo));
   return r.success ? r.data : null;
@@ -63,6 +73,32 @@ export async function crearRestaurante(_p: EstadoAccion, fd: FormData): Promise<
     return fallo("No se pudo crear el restaurante. Inténtalo de nuevo.");
   }
   redirect("/panel/carta");
+}
+
+/**
+ * Publica o retira la carta. Solo el propietario: RLS no deja a los
+ * empleados modificar el restaurante (la actualización afecta a 0 filas).
+ */
+export async function cambiarPublicacion(_p: EstadoAccion, fd: FormData): Promise<EstadoAccion> {
+  const { supabase, restaurante } = await exigirRestaurante();
+  const publicar = fd.get("publicar") === "true";
+
+  const { data, error } = await supabase
+    .from("restaurants")
+    .update({ is_published: publicar })
+    .eq("id", restaurante.id)
+    .select("id");
+  if (error) {
+    registrarError("cambiarPublicacion", error);
+    return fallo(ERROR_GENERICO);
+  }
+  if (!data?.length) return fallo("Solo el propietario del restaurante puede publicar o retirar la carta.");
+
+  actualizar(restaurante.slug);
+  return {
+    ok: true,
+    mensaje: publicar ? "¡Carta publicada! Ya es visible para tus clientes." : "Carta retirada: ya no es visible.",
+  };
 }
 
 // ---------------------------------------------------------------------
@@ -98,7 +134,7 @@ export async function crearCategoria(_p: EstadoAccion, fd: FormData): Promise<Es
     registrarError("crearCategoria", error);
     return fallo(ERROR_GENERICO);
   }
-  refresh();
+  actualizar(ctx.restaurante.slug);
   return { ok: true, mensaje: `Categoría «${datos.datos.name}» creada.` };
 }
 
@@ -122,7 +158,7 @@ export async function renombrarCategoria(_p: EstadoAccion, fd: FormData): Promis
     registrarError("renombrarCategoria", error, { id, filas: data?.length ?? 0 });
     return fallo(ERROR_GENERICO);
   }
-  refresh();
+  actualizar(ctx.restaurante.slug);
   return { ok: true, mensaje: "Guardado." };
 }
 
@@ -133,7 +169,7 @@ export async function borrarCategoria(fd: FormData): Promise<void> {
   if (!id) return;
   const { error } = await supabase.from("categories").delete().eq("id", id).eq("restaurant_id", restaurante.id);
   if (error) registrarError("borrarCategoria", error, { id });
-  refresh();
+  actualizar(restaurante.slug);
 }
 
 /** Sube o baja una categoría intercambiando su posición con la vecina. */
@@ -159,7 +195,7 @@ export async function moverCategoria(fd: FormData): Promise<void> {
   );
   const conError = resultados.find((r) => r.error);
   if (conError) registrarError("moverCategoria", conError.error, { id });
-  refresh();
+  actualizar(ctx.restaurante.slug);
 }
 
 // ---------------------------------------------------------------------
@@ -191,7 +227,7 @@ export async function guardarPlato(_p: EstadoAccion, fd: FormData): Promise<Esta
       return fallo(mensajeError(error.code));
     }
   }
-  refresh();
+  actualizar(restaurante.slug);
   return { ok: true, mensaje: id ? "Plato guardado." : "Plato añadido." };
 }
 
@@ -201,7 +237,7 @@ export async function borrarPlato(fd: FormData): Promise<void> {
   if (!id) return;
   const { error } = await supabase.from("dishes").delete().eq("id", id).eq("restaurant_id", restaurante.id);
   if (error) registrarError("borrarPlato", error, { id });
-  refresh();
+  actualizar(restaurante.slug);
 }
 
 export async function alternarDisponible(fd: FormData): Promise<void> {
@@ -214,7 +250,7 @@ export async function alternarDisponible(fd: FormData): Promise<void> {
     .eq("id", id)
     .eq("restaurant_id", restaurante.id);
   if (error) registrarError("alternarDisponible", error, { id });
-  refresh();
+  actualizar(restaurante.slug);
 }
 
 // ---------------------------------------------------------------------
@@ -225,7 +261,7 @@ export async function alternarDisponible(fd: FormData): Promise<void> {
  * deja constancia de quién lo confirmó y cuándo.
  */
 export async function guardarAlergenos(_p: EstadoAccion, fd: FormData): Promise<EstadoAccion> {
-  const { supabase } = await exigirRestaurante();
+  const { supabase, restaurante } = await exigirRestaurante();
   const id = leerId(fd);
   const alergenos = leerAlergenos(fd);
   if (!id) return fallo("Plato no válido.");
@@ -240,7 +276,7 @@ export async function guardarAlergenos(_p: EstadoAccion, fd: FormData): Promise<
     }
     return fallo("No se pudieron guardar los alérgenos. Inténtalo de nuevo.");
   }
-  refresh();
+  actualizar(restaurante.slug);
   return {
     ok: true,
     mensaje: alergenos.datos.length

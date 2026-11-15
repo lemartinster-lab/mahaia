@@ -6,7 +6,7 @@ import { salir } from "@/lib/acciones/auth";
 export default function LayoutPanel({ children }: LayoutProps<"/panel">) {
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <header className="border-b border-neutral-200 bg-white">
+      <header className="border-b border-neutral-200 bg-white print:hidden">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4 px-4 py-3">
           <Link href="/panel" className="text-lg font-bold tracking-tight">
             Mahaia
