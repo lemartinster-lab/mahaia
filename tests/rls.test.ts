@@ -307,3 +307,64 @@ describe("trazabilidad de alérgenos", () => {
     });
   });
 });
+
+describe("guardar_alergenos (función atómica)", () => {
+  it("sustituye la lista, confirma a nombre del usuario y marca el plato como revisado", async () => {
+    await como(db, usuario(IKER), (tx) =>
+      tx.query(`select guardar_alergenos($1, '{huevos,gluten}')`, [platoA]),
+    );
+    const filas = await filas2(
+      db.query<{ allergen: string; status: string; confirmed_by: string }>(
+        `select allergen, status, confirmed_by from dish_allergens where dish_id = $1 order by allergen`,
+        [platoA],
+      ),
+    );
+    // 'soja' desaparece; gluten y huevos quedan confirmados por Iker
+    expect(filas).toEqual([
+      { allergen: "gluten", status: "confirmed", confirmed_by: IKER },
+      { allergen: "huevos", status: "confirmed", confirmed_by: IKER },
+    ]);
+    const plato = await filas2(
+      db.query<{ allergens_reviewed_by: string; revisado: boolean }>(
+        `select allergens_reviewed_by, allergens_reviewed_at is not null as revisado from dishes where id = $1`,
+        [platoA],
+      ),
+    );
+    expect(plato).toEqual([{ allergens_reviewed_by: IKER, revisado: true }]);
+  });
+
+  it("una lista vacía deja el plato revisado y sin alérgenos", async () => {
+    await como(db, usuario(ANA), (tx) => tx.query(`select guardar_alergenos($1, '{}')`, [platoA]));
+    const n = await filas2(db.query<{ n: number }>(`select count(*)::int as n from dish_allergens where dish_id = $1`, [platoA]));
+    expect(n[0].n).toBe(0);
+  });
+
+  it("Beñat no puede tocar los alérgenos de un plato de Ana (aunque sea visible al público)", async () => {
+    await expect(
+      como(db, usuario(BEÑAT), (tx) => tx.query(`select guardar_alergenos($1, '{gluten}')`, [platoA])),
+    ).rejects.toThrow(/Plato no encontrado/);
+  });
+
+  it("el anónimo no puede ejecutarla", async () => {
+    await expect(
+      como(db, ANONIMO, (tx) => tx.query(`select guardar_alergenos($1, '{gluten}')`, [platoA])),
+    ).rejects.toThrow(/permission denied/);
+  });
+
+  it("si algo falla, no se aplica nada (atomicidad)", async () => {
+    // Estado de partida conocido: gluten confirmado
+    await como(db, usuario(ANA), (tx) => tx.query(`select guardar_alergenos($1, '{gluten}')`, [platoA]));
+    // Un valor inválido hace fallar la llamada entera
+    await expect(
+      como(db, usuario(ANA), (tx) => tx.query(`select guardar_alergenos($1, '{soja,picante}')`, [platoA])),
+    ).rejects.toThrow();
+    const filas = await filas2(
+      db.query<{ allergen: string }>(`select allergen from dish_allergens where dish_id = $1`, [platoA]),
+    );
+    expect(filas).toEqual([{ allergen: "gluten" }]);
+  });
+});
+
+async function filas2<T>(p: Promise<{ rows: T[] }>): Promise<T[]> {
+  return (await p).rows;
+}
