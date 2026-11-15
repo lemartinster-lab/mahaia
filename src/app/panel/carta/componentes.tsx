@@ -20,9 +20,27 @@ const botonPrincipal =
   "rounded-md bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60";
 const campo = "rounded-md border border-neutral-300 px-3 py-2";
 
+const SEGUNDOS_AVISO_OK = 4;
+
+/**
+ * Mensaje bajo el formulario. Los errores se quedan hasta el siguiente
+ * intento; los mensajes de éxito desaparecen a los pocos segundos.
+ */
 function Aviso({ estado }: { estado: EstadoAccion }) {
+  // Guardamos QUÉ respuesta ocultamos (no un booleano): una respuesta nueva
+  // es un objeto distinto y vuelve a mostrarse sola, sin efectos extra.
+  const [ocultado, setOcultado] = useState<EstadoAccion | null>(null);
+
+  useEffect(() => {
+    if (!estado.ok || !estado.mensaje) return;
+    const t = setTimeout(() => setOcultado(estado), SEGUNDOS_AVISO_OK * 1000);
+    return () => clearTimeout(t);
+  }, [estado]);
+
   if (estado.error) return <p className="text-sm text-red-700" role="alert">{estado.error}</p>;
-  if (estado.ok && estado.mensaje) return <p className="text-sm text-green-800" role="status">{estado.mensaje}</p>;
+  if (estado.ok && estado.mensaje && ocultado !== estado) {
+    return <p className="text-sm text-green-800" role="status">{estado.mensaje}</p>;
+  }
   return null;
 }
 
@@ -52,7 +70,7 @@ export function NuevaCategoria() {
         Nueva categoría
       </label>
       <div className="flex gap-2">
-        <input id="nueva-categoria" name="nombre" required maxLength={80} placeholder="Ramen" className={`${campo} flex-1`} />
+        <input id="nueva-categoria" name="nombre" required maxLength={80} placeholder="Ej.: Postres" className={`${campo} flex-1`} />
         <button type="submit" disabled={enviando} className={botonPrincipal}>
           Añadir
         </button>

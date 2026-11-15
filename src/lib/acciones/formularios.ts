@@ -115,3 +115,31 @@ export function leerAlergenos(fd: FormData): Resultado<Alergeno[]> {
 }
 
 export const idSchema = z.uuid();
+
+// ---------------------------------------------------------------------
+// Nombres duplicados
+// ---------------------------------------------------------------------
+/** "  Café  Ñoño " y "cafe ñoño" cuentan como el mismo nombre. */
+export function normalizarNombre(nombre: string): string {
+  return nombre
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Busca otra categoría con el mismo nombre (sin distinguir mayúsculas,
+ * tildes ni espacios). `excluirId` sirve al renombrar: la propia categoría
+ * no cuenta como duplicado. Devuelve el nombre existente o null.
+ */
+export function buscarDuplicado(
+  existentes: readonly { id: string; name: string }[],
+  nombre: string,
+  excluirId?: string,
+): string | null {
+  const buscado = normalizarNombre(nombre);
+  const encontrada = existentes.find((c) => c.id !== excluirId && normalizarNombre(c.name) === buscado);
+  return encontrada ? encontrada.name : null;
+}

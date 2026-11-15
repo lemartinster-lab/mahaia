@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { generarSlug } from "@/lib/domain/slug";
 import {
+  buscarDuplicado,
   leerAlergenos,
+  normalizarNombre,
   leerCategoria,
   leerNuevoRestaurante,
   leerPlato,
@@ -153,5 +155,33 @@ describe("leerAlergenos", () => {
 
   it("rechaza valores manipulados", () => {
     expect(leerAlergenos(fd({ alergeno: ["gluten", "picante"] })).ok).toBe(false);
+  });
+});
+
+describe("categorías duplicadas", () => {
+  const existentes = [
+    { id: "a", name: "Ramen" },
+    { id: "b", name: "Café y postres" },
+  ];
+
+  it("normaliza mayúsculas, tildes y espacios", () => {
+    expect(normalizarNombre("  Café   Ñoño ")).toBe("cafe nono");
+  });
+
+  it.each(["Ramen", "ramen", "  RAMEN ", "Ramén"])("detecta «%s» como duplicado de Ramen", (n) => {
+    expect(buscarDuplicado(existentes, n)).toBe("Ramen");
+  });
+
+  it("detecta duplicados con tildes distintas", () => {
+    expect(buscarDuplicado(existentes, "cafe y  POSTRES")).toBe("Café y postres");
+  });
+
+  it("un nombre nuevo no es duplicado", () => {
+    expect(buscarDuplicado(existentes, "Entrantes")).toBeNull();
+  });
+
+  it("al renombrar, la propia categoría no cuenta (p. ej. cambiar solo mayúsculas)", () => {
+    expect(buscarDuplicado(existentes, "RAMEN", "a")).toBeNull();
+    expect(buscarDuplicado(existentes, "Ramen", "b")).toBe("Ramen");
   });
 });
